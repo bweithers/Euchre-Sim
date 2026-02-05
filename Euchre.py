@@ -34,8 +34,8 @@ class Player:
         return card
 
     def choose_card(self, trick, game):
-        led_suit = trick[0].suit if trick else None
-        same_suit_cards = [card for card in self.hand if card.suit == led_suit]
+        led_suit = game.effective_suit(trick[0]) if trick else None
+        same_suit_cards = [card for card in self.hand if game.effective_suit(card) == led_suit]
 
         if same_suit_cards:
             return max(same_suit_cards, key=lambda x: game.card_value(x))
@@ -49,7 +49,7 @@ class Player:
         if partner_winning:
             return min(self.hand, key=lambda x: game.card_value(x))
 
-        trump_cards = [card for card in self.hand if card.suit == game.trump_suit]
+        trump_cards = [card for card in self.hand if game.is_trump(card)]
         if trump_cards:
             return max(trump_cards, key=lambda x: game.card_value(x))
 
@@ -85,16 +85,33 @@ class EuchreGame:
                 return 7  # Left bower (black suits)
         return rank_order[card.rank]
 
+    def is_trump(self, card):
+        if card.suit == self.trump_suit:
+            return True
+        if card.rank == 'Jack':
+            same_color = {
+                'Hearts': 'Diamonds', 'Diamonds': 'Hearts',
+                'Clubs': 'Spades', 'Spades': 'Clubs'
+            }
+            if card.suit == same_color[self.trump_suit]:
+                return True
+        return False
+
+    def effective_suit(self, card):
+        if self.is_trump(card):
+            return self.trump_suit
+        return card.suit
+
     def compare_cards(self, cards_played, led_suit):
-        trump_cards = [card for card in cards_played if card.suit == self.trump_suit]
+        trump_cards = [card for card in cards_played if self.is_trump(card)]
         if trump_cards:
             return max(trump_cards, key=lambda x: self.card_value(x))
-        
-        on_suit_cards = [card for card in cards_played if card.suit == led_suit]
+
+        on_suit_cards = [card for card in cards_played if card.suit == led_suit and not self.is_trump(card)]
         if on_suit_cards:
             return max(on_suit_cards, key=lambda x: self.card_value(x))
-        
-        return cards_played[0]  # If no trump or on-suit cards, first card wins
+
+        return cards_played[0]
 
     def play_round(self):
         print(f"\nTrump suit: {self.trump_suit}")
@@ -106,7 +123,7 @@ class EuchreGame:
             trick.append(card_played)
             print(f"{player.name} plays {card_played}")
 
-        winning_card = self.compare_cards(trick, trick[0].suit)
+        winning_card = self.compare_cards(trick, self.effective_suit(trick[0]))
         self.trick_winner = self.players[trick.index(winning_card)]
         print(f"{self.trick_winner.name} wins the trick with {winning_card}")
         self.team_tricks[self.trick_winner.team] += 1
