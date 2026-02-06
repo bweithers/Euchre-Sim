@@ -181,6 +181,20 @@ class NeuralStrategy:
         inputs = encode_hand_relative(hand, trump_suit, seat_offset, turned_card)
         return self._forward(inputs)
 
+    def choose_trump_round2(self, hand, turned_card_suit, seat_offset):
+        """Evaluate each non-turned suit, call the best one if prob > 0.5."""
+        best_suit = None
+        best_prob = 0.5
+        for suit in SUITS:
+            if suit == turned_card_suit:
+                continue
+            inputs = encode_hand_relative(hand, suit, seat_offset, turned_card=None)
+            prob = self._forward(inputs)
+            if prob > best_prob:
+                best_prob = prob
+                best_suit = suit
+        return best_suit
+
     def copy(self):
         return NeuralStrategy(weights=list(self.weights))
 
@@ -273,6 +287,9 @@ class CallingStrategy:
         score = sum(w * f for w, f in zip(self.weights, features))
         return score > 0
 
+    def choose_trump_round2(self, hand, turned_card_suit, seat_offset):
+        return None
+
     def copy(self):
         return CallingStrategy(weights=list(self.weights))
 
@@ -296,6 +313,9 @@ class AlwaysPassStrategy:
     def should_call(self, hand, turned_card, game, seat_offset, is_dealer):
         return False
 
+    def choose_trump_round2(self, hand, turned_card_suit, seat_offset):
+        return None
+
 
 class RandomCallStrategy:
     def __init__(self, call_rate=0.5):
@@ -303,6 +323,12 @@ class RandomCallStrategy:
 
     def should_call(self, hand, turned_card, game, seat_offset, is_dealer):
         return random.random() < self.call_rate
+
+    def choose_trump_round2(self, hand, turned_card_suit, seat_offset):
+        if random.random() < self.call_rate:
+            candidates = [s for s in SUITS if s != turned_card_suit]
+            return random.choice(candidates)
+        return None
 
 
 def _make_players(strategy_a, strategy_b):
@@ -385,9 +411,10 @@ class EvolutionEngine:
         return fitnesses
 
     def _compute_call_rate(self, strategy, num_samples=500):
-        """Estimate how often a strategy calls trump."""
+        """Estimate how often a strategy calls trump in round 1 and round 2."""
         from .cards import Deck
-        calls = 0
+        r1_calls = 0
+        r2_calls = 0
         for _ in range(num_samples):
             deck = Deck()
             deck.shuffle()
@@ -396,8 +423,12 @@ class EvolutionEngine:
             seat_offset = random.choice([1, 2, 3, 4])
             is_dealer = (seat_offset == 4)
             if strategy.should_call(hand, turned, None, seat_offset, is_dealer):
-                calls += 1
-        return calls / num_samples
+                r1_calls += 1
+            elif hasattr(strategy, 'choose_trump_round2'):
+                result = strategy.choose_trump_round2(hand, turned.suit, seat_offset)
+                if result is not None:
+                    r2_calls += 1
+        return r1_calls / num_samples, r2_calls / num_samples
 
     def run_generation(self):
         self.generation += 1
@@ -409,7 +440,7 @@ class EvolutionEngine:
         best_fitness = paired[0][1]
         median_fitness = paired[len(paired) // 2][1]
         best_strategy = paired[0][0]
-        call_rate = self._compute_call_rate(best_strategy)
+        call_rate, call_rate_r2 = self._compute_call_rate(best_strategy)
 
         # Elitism
         new_population = [s.copy() for s, _ in paired[:self.elite_count]]
@@ -440,6 +471,7 @@ class EvolutionEngine:
             "best_fitness": best_fitness,
             "median_fitness": median_fitness,
             "call_rate": call_rate,
+            "call_rate_r2": call_rate_r2,
             "best_strategy": best_strategy,
         }
 

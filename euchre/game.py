@@ -42,6 +42,13 @@ class Player:
             return False
         return self.calling_strategy.should_call(self.hand, turned_card, game, seat_offset, is_dealer)
 
+    def decide_call_round2(self, turned_card_suit, seat_offset):
+        if self.calling_strategy is None:
+            return None
+        if not hasattr(self.calling_strategy, 'choose_trump_round2'):
+            return None
+        return self.calling_strategy.choose_trump_round2(self.hand, turned_card_suit, seat_offset)
+
     def choose_discard(self, game):
         non_trump = [c for c in self.hand if not game.is_trump(c)]
         if non_trump:
@@ -104,6 +111,21 @@ class EuchreGame:
         dealer.receive_cards([self.turned_card])
         discarded = dealer.choose_discard(self)
         self._print(f"{dealer.name} picks up {self.turned_card} and discards {discarded}")
+
+    def bidding_round_2(self):
+        turned_card_suit = self.turned_card.suit
+        for i in range(4):
+            seat = (self.dealer_index + 1 + i) % 4
+            player = self.players[seat]
+            seat_offset = i + 1
+            called_suit = player.decide_call_round2(turned_card_suit, seat_offset)
+            if called_suit is not None and called_suit != turned_card_suit:
+                self.trump_suit = called_suit
+                self.calling_team = player.team
+                self._print(f"{player.name} calls {self.trump_suit}! (round 2)")
+                return True
+        self._print("All players pass round 2.")
+        return False
 
     def card_value(self, card):
         rank_order = {'9': 1, '10': 2, 'Jack': 3, 'Queen': 4, 'King': 5, 'Ace': 6}
@@ -183,7 +205,9 @@ class EuchreGame:
 
         called = self.bidding_round_1()
         if not called:
-            return {"Team A": 0, "Team B": 0}
+            called = self.bidding_round_2()
+            if not called:
+                return {"Team A": 0, "Team B": 0}
 
         self._print(f"\nTrump suit: {self.trump_suit}  (called by {self.calling_team})")
 

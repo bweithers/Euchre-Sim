@@ -111,6 +111,54 @@ def analyze_neural_strategy(strategy, num_samples=2000):
         bar = "#" * bar_len + "." * (40 - bar_len)
         print(f"    {seat_name:15s}:  {avg_prob:.1%}  [{bar}]")
 
+    # Round 2 analysis
+    print()
+    print("  Round 2 (choosing trump from non-turned suits):")
+    r2_calls = 0
+    r2_total = 0
+    for _ in range(num_samples):
+        deck = Deck()
+        deck.shuffle()
+        hand = deck.deal(5)
+        turned = deck.deal(1)[0]
+        seat = random.choice([1, 2, 3, 4])
+        r2_total += 1
+        result = strategy.choose_trump_round2(hand, turned.suit, seat)
+        if result is not None:
+            r2_calls += 1
+    r2_rate = r2_calls / r2_total
+    print(f"    Overall R2 call rate: {r2_rate:.1%}")
+
+    # R2 by trump count in best candidate suit
+    for trump_count in [1, 2, 3, 4]:
+        probs = []
+        for _ in range(num_samples // 4):
+            deck = Deck()
+            deck.shuffle()
+            trump_suit = random.choice(SUITS)
+            # Pick a turned card of a different suit
+            other_suits = [s for s in SUITS if s != trump_suit]
+            turned_suit = random.choice(other_suits)
+            hand = []
+
+            trump_cards = [c for c in deck.cards if c.suit == trump_suit]
+            random.shuffle(trump_cards)
+            hand.extend(trump_cards[:trump_count])
+
+            non_trump = [c for c in deck.cards if c.suit != trump_suit and c not in hand]
+            random.shuffle(non_trump)
+            hand.extend(non_trump[:5 - trump_count])
+
+            seat = random.choice([1, 2, 3, 4])
+            inputs = encode_hand_relative(hand, trump_suit, seat, turned_card=None)
+            prob = strategy._forward(inputs)
+            probs.append(prob)
+
+        avg_prob = sum(probs) / len(probs)
+        bar_len = int(avg_prob * 40)
+        bar = "#" * bar_len + "." * (40 - bar_len)
+        print(f"    {trump_count} trump (R2): {avg_prob:.1%}  [{bar}]")
+
     print("  " + "-" * 60)
 
 
@@ -164,7 +212,8 @@ def main():
         print(f"Gen {result['generation']:3d}  |  "
               f"best: {result['best_fitness']:+8.1f}  "
               f"median: {result['median_fitness']:+8.1f}  "
-              f"call%: {result['call_rate']:.1%}  "
+              f"R1: {result['call_rate']:.1%}  "
+              f"R2: {result['call_rate_r2']:.1%}  "
               f"({gen_elapsed:.1f}s)")
 
     total_time = time.time() - start_time
