@@ -49,6 +49,15 @@ class Player:
             return None
         return self.calling_strategy.choose_trump_round2(self.hand, turned_card_suit, seat_offset)
 
+    def force_call_round2(self, turned_card_suit, seat_offset):
+        if self.calling_strategy is not None and hasattr(self.calling_strategy, 'choose_trump_forced'):
+            return self.calling_strategy.choose_trump_forced(self.hand, turned_card_suit, seat_offset)
+        # Fallback: pick a random non-turned suit
+        from .cards import SUITS
+        import random
+        candidates = [s for s in SUITS if s != turned_card_suit]
+        return random.choice(candidates)
+
     def choose_discard(self, game):
         non_trump = [c for c in self.hand if not game.is_trump(c)]
         if non_trump:
@@ -118,13 +127,20 @@ class EuchreGame:
             seat = (self.dealer_index + 1 + i) % 4
             player = self.players[seat]
             seat_offset = i + 1
+            is_dealer = (seat_offset == 4)
             called_suit = player.decide_call_round2(turned_card_suit, seat_offset)
             if called_suit is not None and called_suit != turned_card_suit:
                 self.trump_suit = called_suit
                 self.calling_team = player.team
                 self._print(f"{player.name} calls {self.trump_suit}! (round 2)")
                 return True
-        self._print("All players pass round 2.")
+            if is_dealer:
+                # Screw the dealer: dealer must call
+                forced_suit = player.force_call_round2(turned_card_suit, seat_offset)
+                self.trump_suit = forced_suit
+                self.calling_team = player.team
+                self._print(f"{player.name} is forced to call {self.trump_suit}! (screw the dealer)")
+                return True
         return False
 
     def card_value(self, card):
@@ -205,9 +221,7 @@ class EuchreGame:
 
         called = self.bidding_round_1()
         if not called:
-            called = self.bidding_round_2()
-            if not called:
-                return {"Team A": 0, "Team B": 0}
+            self.bidding_round_2()
 
         self._print(f"\nTrump suit: {self.trump_suit}  (called by {self.calling_team})")
 

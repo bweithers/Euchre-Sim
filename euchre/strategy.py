@@ -195,6 +195,20 @@ class NeuralStrategy:
                 best_suit = suit
         return best_suit
 
+    def choose_trump_forced(self, hand, turned_card_suit, seat_offset):
+        """Pick the best non-turned suit regardless of threshold (screw the dealer)."""
+        best_suit = None
+        best_prob = -1.0
+        for suit in SUITS:
+            if suit == turned_card_suit:
+                continue
+            inputs = encode_hand_relative(hand, suit, seat_offset, turned_card=None)
+            prob = self._forward(inputs)
+            if prob > best_prob:
+                best_prob = prob
+                best_suit = suit
+        return best_suit
+
     def copy(self):
         return NeuralStrategy(weights=list(self.weights))
 

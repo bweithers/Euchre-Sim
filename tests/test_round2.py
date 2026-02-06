@@ -94,11 +94,13 @@ class TestBiddingRound2(unittest.TestCase):
             p.calling_strategy = strategy
         return EuchreGame(players=players, silent=True)
 
-    def test_all_pass_both_rounds_scores_zero(self):
+    def test_screw_the_dealer_forces_call(self):
+        """When all pass both rounds, dealer is forced to call (screw the dealer)."""
         game = self._make_game(AlwaysPassStrategy())
         game.dealer_index = 0
         scores = game.play_hand()
-        self.assertEqual(scores, {"Team A": 0, "Team B": 0})
+        # Dealer is forced to call, so someone always scores
+        self.assertTrue(scores["Team A"] > 0 or scores["Team B"] > 0)
 
     def test_round2_sets_non_turned_trump(self):
         game = self._make_game(AlwaysPassStrategy())
